@@ -1,0 +1,41 @@
+# Virtual environment
+fyp-env/
+venv/
+env/
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# macOS
+.DS_Store
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Environment variables
+.env
+
+# Logs
+logs/
+*.log
+
+# Model files (large binaries)
+models/*.zip
+models/*.pth
+models/*.pt
+models/*.h5
+
+# Sensitive data
+cookies.txt
+users.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+

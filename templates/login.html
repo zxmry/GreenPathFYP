@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>GreenPath - Driver Partner Portal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Nunito', sans-serif;
+      min-height: 100vh;
+      background: url('/static/background_login.png') center/cover no-repeat fixed;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .screen { display: none; width: 100%; max-width: 400px; flex-direction: column; }
+    .screen.active { display: flex; }
+
+    .card {
+      background: #fff;
+      border-radius: 20px;
+      padding: 32px 28px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+    }
+
+    .logo-area {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 28px;
+    }
+
+    .logo-icon {
+      width: 56px; height: 56px;
+      background: #00B14F;
+      border-radius: 16px;
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 10px;
+    }
+
+    .logo-icon svg { width: 32px; height: 32px; fill: #fff; }
+
+    .logo-title {
+      font-size: 22px;
+      font-weight: 800;
+      color: #111;
+      letter-spacing: -0.5px;
+    }
+
+    .logo-sub {
+      font-size: 13px;
+      color: #888;
+      margin-top: 2px;
+    }
+
+    .tab-row {
+      display: flex;
+      background: #f0f0f0;
+      border-radius: 12px;
+      padding: 4px;
+      margin-bottom: 24px;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 9px;
+      border: none;
+      background: transparent;
+      border-radius: 9px;
+      font-family: 'Nunito', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      color: #888;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .tab-btn.active {
+      background: #fff;
+      color: #00B14F;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.1);
+    }
+
+    .form-group { margin-bottom: 14px; }
+
+    .form-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      color: #555;
+      margin-bottom: 5px;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 11px 14px;
+      border: 1.5px solid #e5e5e5;
+      border-radius: 10px;
+      font-family: 'Nunito', sans-serif;
+      font-size: 14px;
+      color: #111;
+      outline: none;
+      transition: border-color 0.2s;
+      background: #fafafa;
+    }
+
+    .form-input:focus { border-color: #00B14F; background: #fff; }
+
+    .form-select {
+      width: 100%;
+      padding: 11px 14px;
+      border: 1.5px solid #e5e5e5;
+      border-radius: 10px;
+      font-family: 'Nunito', sans-serif;
+      font-size: 14px;
+      color: #111;
+      outline: none;
+      background: #fafafa;
+      appearance: none;
+      cursor: pointer;
+    }
+
+    .form-select:focus { border-color: #00B14F; }
+
+    .select-wrap { position: relative; }
+    .select-wrap::after {
+      content: '';
+      position: absolute;
+      right: 14px; top: 50%;
+      transform: translateY(-50%);
+      width: 0; height: 0;
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-top: 6px solid #888;
+      pointer-events: none;
+    }
+
+    .btn-primary {
+      width: 100%;
+      padding: 14px;
+      background: #00B14F;
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      font-family: 'Nunito', sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 6px;
+      transition: background 0.2s, transform 0.1s;
+    }
+
+    .btn-primary:hover { background: #009942; }
+    .btn-primary:active { transform: scale(0.98); }
+
+    .switch-text {
+      text-align: center;
+      font-size: 13px;
+      color: #888;
+      margin-top: 16px;
+    }
+
+    .switch-link {
+      color: #00B14F;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+    }
+
+    .error-msg {
+      color: #e53e3e;
+      font-size: 12px;
+      font-weight: 600;
+      margin-top: 4px;
+      display: none;
+    }
+
+    .success-msg {
+      color: #00B14F;
+      font-size: 12px;
+      font-weight: 600;
+      margin-top: 4px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- AUTH SCREEN -->
+  <div class="screen active card" id="screen-auth">
+    <div class="logo-area">
+      <div class="logo-icon">
+        <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+          <path d="M16 3C8.82 3 3 8.82 3 16s5.82 13 13 13 13-5.82 13-13S23.18 3 16 3zm1 19v-6h-4l5-9v6h4l-5 9z"/>
+        </svg>
+      </div>
+      <div class="logo-title">GreenPath</div>
+      <div class="logo-sub">Driver Partner Portal</div>
+    </div>
+
+    <div class="tab-row">
+      <button class="tab-btn active" id="tab-login" onclick="switchTab('login')">Log In</button>
+      <button class="tab-btn" id="tab-signup" onclick="switchTab('signup')">Sign Up</button>
+    </div>
+
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div style="margin-bottom: 16px; padding: 12px; background: #00B14F; color: white; border-radius: 8px; font-size: 14px;">
+          {{ messages[0] }}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <!-- LOGIN FORM -->
+    <form id="form-login" method="POST" action="/login">
+      <input type="hidden" name="action" value="login">
+      <div class="form-group">
+        <label class="form-label">Phone Number</label>
+        <input class="form-input" type="tel" name="phone" id="login-phone" placeholder="+60 12-345 6789" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input class="form-input" type="password" name="password" id="login-pass" placeholder="Enter your password" required>
+        <div class="error-msg" id="login-error">Invalid phone or password.</div>
+      </div>
+      <button type="submit" class="btn-primary">Log In</button>
+      <div class="switch-text">
+        New driver? <span class="switch-link" onclick="switchTab('signup')">Sign up here</span>
+      </div>
+    </form>
+
+    <!-- SIGNUP FORM -->
+    <form id="form-signup" method="POST" action="/login" style="display:none;">
+      <input type="hidden" name="action" value="signup">
+      <div class="form-group">
+        <label class="form-label">Full Name</label>
+        <input class="form-input" type="text" name="name" id="su-name" placeholder="Ahmad bin Razak" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Phone Number</label>
+        <input class="form-input" type="tel" name="phone" id="su-phone" placeholder="+60 12-345 6789" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Vehicle Type</label>
+        <div class="select-wrap">
+          <select class="form-select" name="vehicle" id="su-vehicle" required>
+            <option value="">Select vehicle type</option>
+            <option value="GreenPath Car">GreenPath Car (Sedan/SUV)</option>
+            <option value="GreenPath Bike">GreenPath Bike (Motorcycle)</option>
+            <option value="GreenPath Van">GreenPath Van (MPV/Van)</option>
+            <option value="GreenPath Truck">GreenPath Truck (Lorry/Truck)</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input class="form-input" type="password" name="password" id="su-pass" placeholder="Min. 8 characters" required>
+        <div class="error-msg" id="signup-error">Please fill in all fields.</div>
+      </div>
+      <button type="submit" class="btn-primary">Create Account</button>
+      <div class="switch-text">
+        Already a partner? <span class="switch-link" onclick="switchTab('login')">Log in</span>
+      </div>
+    </form>
+  </div>
+
+  <script>
+    function switchTab(tab) {
+      document.getElementById('tab-login').classList.toggle('active', tab === 'login');
+      document.getElementById('tab-signup').classList.toggle('active', tab === 'signup');
+      document.getElementById('form-login').style.display = tab === 'login' ? '' : 'none';
+      document.getElementById('form-signup').style.display = tab === 'signup' ? '' : 'none';
+      document.getElementById('login-error').style.display = 'none';
+      document.getElementById('signup-error').style.display = 'none';
+    }
+
+    // Client-side validation
+    document.querySelectorAll('form').forEach(form => {
+      form.addEventListener('submit', function(e) {
+        const action = this.querySelector('input[name=\"action\"]').value;
+        const passField = action === 'login' ? 'login-pass' : 'su-pass';
+        const pass = document.getElementById(passField).value;
+        if (action === 'signup' && pass.length < 8) {
+          e.preventDefault();
+          document.getElementById('signup-error').style.display = 'block';
+          document.getElementById('signup-error').textContent = 'Password must be at least 8 characters.';
+          return false;
+        }
+      });
+    });
+  </script>
+
+</body>
+</html>
+

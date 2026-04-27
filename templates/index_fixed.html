@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GreenPath - Smart Delivery Optimizer</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Grab Style CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='greenPath.css') }}">
+    
+    <!-- Smooth Loading -->
+    <style>
+        body { opacity: 0; transition: opacity 0.3s ease; }
+        body.loaded { opacity: 1; }
+        
+        .splash-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, #0056A4 0%, #003C78 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            color: white;
+        }
+        
+        .splash-logo {
+            width: 100px;
+            height: 100px;
+            background: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+            animation: pulse 1.5s infinite;
+            border: 4px solid #8BC34A;
+        }
+        
+        .splash-logo i {
+            color: #0056A4;
+            font-size: 50px;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Splash Screen -->
+    <div class="splash-screen" id="splashScreen">
+        <div class="splash-logo">
+            <i class="fas fa-bolt"></i>
+        </div>
+        <h1 style="font-size: 32px; margin-bottom: 10px;">GreenPath</h1>
+        <p style="opacity: 0.8;">Loading your delivery optimizer...</p>
+    </div>
+
+    <!-- Header -->
+    <header>
+        <div class="header-content">
+            <div class="logo-container">
+                <div class="logo-circle">
+                    <i class="fas fa-bolt logo-icon"></i>
+                </div>
+                <div class="logo-text">
+                    <div class="app-name">GreenPath</div>
+                    <div class="app-tagline">Smart Delivery Optimization</div>
+                </div>
+            </div>
+            
+            <div class="header-stats">
+                <div class="header-stat">
+                    <div class="stat-value" id="header-distance">0 km</div>
+                    <div class="stat-label">Total Distance</div>
+                </div>
+                <div class="header-stat">
+                    <div class="stat-value" id="header-savings">0 kg</div>
+                    <div class="stat-label">CO₂ Saved</div>
+                </div>
+                <div class="header-stat">
+                    <div class="stat-value" id="header-stops">0</div>
+                    <div class="stat-label">Stops</div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="container">
+
+        <!-- Left Sidebar -->
+        <div class="input-section">
+            <div class="section-header">
+                <div class="section-icon">
+                    <i class="fas fa-map-marked-alt"></i>
+                </div>
+                <div class="section-titles">
+                    <h2 class="section-title">Delivery Stops</h2>
+                    <p class="section-subtitle">Add up to 10 delivery locations</p>
+                </div>
+            </div>
+
+            <!-- Address Input -->
+            <div class="input-group">
+                <div class="input-label">
+                    <i class="fas fa-search-location"></i>
+                    <span>Enter Delivery Address</span>
+                </div>
+                <div class="input-wrapper">
+                    <i class="fas fa-map-pin"></i>
+                    <input type="text" id="address-input" placeholder="e.g., Petronas Twin Towers, KL" autocomplete="off">
+                </div>
+                <div class="input-hint">
+                    <i class="fas fa-lightbulb"></i>
+                    <span>Press Enter or click Add to include address</span>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="btn-group">
+                <button id="add-btn" class="btn btn-primary">
+                    <i class="fas fa-plus-circle"></i>
+                    <span>Add Address</span>
+                </button>
+                <button id="remove-all-btn" class="btn btn-secondary">
+                    <i class="fas fa-trash"></i>
+                    <span>Clear All</span>
+                </button>
+            </div>
+
+            <!-- Address List -->
+            <div class="address-list-container">
+                <div class="list-header">
+                    <h3><i class="fas fa-list-ol"></i> Delivery Sequence</h3>
+                    <span class="badge" id="stop-count">0 stops</span>
+                </div>
+                <div id="address-list" class="address-list">
+                    <div class="empty-state">
+                        <i class="fas fa-route"></i>
+                        <p>No addresses added yet</p>
+                        <small>Add at least 2 addresses to optimize</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Action Buttons -->
+            <div class="action-buttons">
+                <button id="optimize-btn" class="btn btn-primary btn-lg btn-optimize">
+                    <i class="fas fa-bolt"></i>
+                    <span>Optimize Route</span>
+                </button>
+                <button id="clear-route-btn" class="btn btn-secondary">
+                    <i class="fas fa-redo"></i>
+                    <span>Clear Route</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            
+            <!-- Map Section -->
+            <div class="map-section">
+                <div class="map-header">
+                    <h2><i class="fas fa-map"></i> Route Visualization</h2>
+                    <div class="map-controls">
+                        <button class="map-btn" id="zoom-in"><i class="fas fa-search-plus"></i></button>
+                        <button class="map-btn" id="zoom-out"><i class="fas fa-search-minus"></i></button>
+                        <button class="map-btn" id="locate-me"><i class="fas fa-location-crosshairs"></i></button>
+                        <button class="map-btn" id="toggle-routes" title="Toggle Routes"><i class="fas fa-exchange-alt"></i></button>
+                    </div>
+                </div>
+                <div class="map-container">
+                    <div id="map"></div>
+                    <div class="map-overlay">
+                        <i class="fas fa-car-side"></i>
+                        <span>Real-time Route Tracking</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Section -->
+            <div class="results-section">
+                <div class="section-header-row">
+                    <div class="section-header">
+                        <div class="section-icon">
+                            <i class="fas fa-chart-bar"></i>
+                        </div>
+                        <div class="section-titles">
+                            <h2 class="section-title">Optimization Results</h2>
+                            <p class="section-subtitle">Live metrics and analytics</p>
+                        </div>
+                    </div>
+                    <div class="results-badge">
+                        <i class="fas fa-leaf"></i>
+                        <span>ECO-FRIENDLY ROUTE</span>
+                    </div>
+                </div>
+
+                <!-- Metrics Grid -->
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-header">
+                            <div class="metric-icon distance">
+                                <i class="fas fa-route"></i>
+                            </div>
+                            <h3 class="metric-title">Distance</h3>
+                        </div>
+                        <div class="metric-value" id="total-distance">0.0</div>
+                        <div class="metric-unit">kilometers</div>
+                        <div class="metric-change positive" id="distance-savings">
+                            <i class="fas fa-arrow-down"></i>
+                            <span>0.0 km saved</span>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-card">
+                        <div class="metric-header">
+                            <div class="metric-icon co2">
+                                <i class="fas fa-leaf"></i>
+                            </div>
+                            <h3 class="metric-title">CO₂ Savings</h3>
+                        </div>
+                        <div class="metric-value" id="co2-savings">0.0</div>
+                        <div class="metric-unit">kilograms</div>
+                        <div class="metric-change positive" id="co2-comparison">
+                            <i class="fas fa-tree"></i>
+                            <span>≈ 0 trees saved</span>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-card">
+                        <div class="metric-header">
+                            <div class="metric-icon time">
+                                <i class="fas fa-clock"></i>
+                            </div>
+                            <h3 class="metric-title">Time Saved</h3>
+                        </div>
+                        <div class="metric-value" id="time-saved">0</div>
+                        <div class="metric-unit">minutes</div>
+                        <div class="metric-change positive">
+                            <i class="fas fa-history"></i>
+                            <span>Faster deliveries</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Efficiency Chart -->
+                <div class="chart-section">
+                    <div class="chart-header">
+                        <h3><i class="fas fa-chart-line"></i> Efficiency Comparison</h3>
+                        <div class="chart-tabs">
+                            <button class="chart-tab active" data-chart="distance">Distance</button>
+                            <button class="chart-tab" data-chart="co2">CO₂ Emissions</button>
+                            <button class="chart-tab" data-chart="time">Time</button>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="metricsChart"></canvas>
+                    </div>
+                    <div class="chart-footer">
+                        <div class="legend">
+                            <div class="legend-item">
+                                <div class="legend-color original"></div>
+                                <span>Original Route</span>
+                            </div>
+                            <div class="legend-item">
+                                <div class="legend-color optimized"></div>
+                                <span>Optimized Route</span>
+                            </div>
+                        </div>
+                        <div class="savings-badge" id="overall-savings">
+                            <i class="fas fa-trophy"></i>
+                            <span>0% More Efficient</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Route Details -->
+                <div class="route-details">
+                    <h3><i class="fas fa-list-check"></i> Optimized Sequence</h3>
+                    <div class="route-steps" id="route-steps">
+                        <div class="empty-route">
+                            <i class="fas fa-directions"></i>
+                            <p>Optimize route to see delivery sequence</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay">
+        <div class="loader">
+            <div class="loader-circle"></div>
+            <div class="loader-circle"></div>
+            <div class="loader-circle"></div>
+        </div>
+        <h3 class="loading-text">Optimizing Your Route</h3>
+        <p class="loading-subtext">Finding the most efficient path...</p>
+        <div class="loading-progress">
+            <div class="progress-bar"></div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container"></div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Grab Style JS -->
+    <script src="{{ url_for('static', filename='greenPath.js') }}"></script>
+
+    <!-- Initialize App -->
+    <script>
+        // Hide splash screen after load
+        window.addEventListener('load', function() {
+            setTimeout(() => {
+                document.getElementById('splashScreen').style.opacity = '0';
+                document.getElementById('splashScreen').style.transition = 'opacity 0.5s ease';
+                setTimeout(() => {
+                    document.getElementById('splashScreen').style.display = 'none';
+                    document.body.classList.add('loaded');
+                }, 500);
+            }, 1000);
+        });
+    </script>
+</body>
+</html>
