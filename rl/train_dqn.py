@@ -5,7 +5,7 @@ from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.callbacks import EvalCallback, BaseCallback
 from stable_baselines3.common.monitor import Monitor
 
-from delivery_env import DeliveryEnv
+from rl.delivery_env import DeliveryEnv
 
 
 # ── Reward logger callback ─────────────────────────────────────────────────────
@@ -159,3 +159,4 @@ if __name__ == "__main__":
     evaluate(model, num_stops=5, vehicle_type="car", n_episodes=20)
 
     plot_training(episode_rewards)
+
