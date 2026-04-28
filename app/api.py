@@ -12,15 +12,13 @@ from app.services.fuel_service import get_latest_fuel_prices
 
 api_bp = Blueprint("api", __name__)
 
-
-@api_bp.route("/api/process-route", methods=["POST"])
 @api_bp.route("/api/fuel-prices", methods=["GET"])
-@login_required
-
 def fuel_prices():
     data = get_latest_fuel_prices()
     return jsonify(data)
 
+@api_bp.route("/api/process-route", methods=["POST"])
+@login_required
 def process_route():
     data = request.json
     if not data or "addresses" not in data:
