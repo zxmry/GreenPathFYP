@@ -1,6 +1,6 @@
 import requests
 
-FUEL_API_URL = "https://api.data.gov.my/data-catalogue?id=fuelprice&limit=1"
+FUEL_API_URL = "https://api.data.gov.my/data-catalogue?id=fuelprice&limit=1&sort=-date"
 
 def get_latest_fuel_prices():
     try:
@@ -8,7 +8,14 @@ def get_latest_fuel_prices():
         response.raise_for_status()
 
         json_data = response.json()
-        latest = json_data["data"][0]
+
+        # data.gov.my returns a list directly, not wrapped in a "data" key
+        if isinstance(json_data, list) and len(json_data) > 0:
+            latest = json_data[0]
+        elif isinstance(json_data, dict) and "data" in json_data:
+            latest = json_data["data"][0]
+        else:
+            raise ValueError("Unexpected API response format")
 
         return {
             "date": latest.get("date"),
