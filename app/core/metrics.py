@@ -74,30 +74,28 @@ def calculate_time_metrics(original_distance_km, optimized_distance_km, num_stop
 def calculate_fuel_cost_metrics(original_distance_km, optimized_distance_km, vehicle_type):
     """
     Calculate fuel cost metrics based on distance, vehicle type, fuel efficiency,
-    and Malaysian fuel prices.
-
-    Parameters:
-        original_distance_km, optimized_distance_km: Route distances in km.
-        vehicle_type: String from user session (e.g., "GreenPath Car").
-
-    Returns:
-        Dictionary with fuel costs in RM and savings.
+    and live Malaysian fuel prices from data.gov.my.
     """
+    from app.services.fuel_service import get_latest_fuel_prices  # import here to avoid circular imports
+
     vehicle_lower = vehicle_type.lower()
+
+    # Get live fuel prices
+    live_prices = get_latest_fuel_prices()
 
     if any(word in vehicle_lower for word in ["motorcycle", "moto", "bike"]):
         fuel_efficiency_l_per_100km = VEHICLE_FUEL_PARAMS["motorcycle"]["efficiency_l_per_100km"]
-        fuel_price_rm_per_l = VEHICLE_FUEL_PARAMS["motorcycle"]["fuel_price_rm_per_l"]
+        fuel_price_rm_per_l = live_prices["ron95"]  # motorcycles use RON95
     elif any(word in vehicle_lower for word in ["car", "sedan"]):
         fuel_efficiency_l_per_100km = VEHICLE_FUEL_PARAMS["car"]["efficiency_l_per_100km"]
-        fuel_price_rm_per_l = VEHICLE_FUEL_PARAMS["car"]["fuel_price_rm_per_l"]
+        fuel_price_rm_per_l = live_prices["ron95"]  # cars use RON95
     else:  # van, truck, lorry, default
         fuel_efficiency_l_per_100km = VEHICLE_FUEL_PARAMS["van"]["efficiency_l_per_100km"]
-        fuel_price_rm_per_l = VEHICLE_FUEL_PARAMS["van"]["fuel_price_rm_per_l"]
+        fuel_price_rm_per_l = live_prices["diesel"]  # vans/trucks use diesel
 
     print(
         f"   🛢️  Fuel calc: {vehicle_type} → "
-        f"{fuel_efficiency_l_per_100km}L/100km @ RM{fuel_price_rm_per_l}/L"
+        f"{fuel_efficiency_l_per_100km}L/100km @ RM{fuel_price_rm_per_l}/L (live price)"
     )
 
     # Fuel used = (distance_km / 100) * efficiency

@@ -21,7 +21,8 @@ GreenPath/
 │   │   ├── metrics.py         # Time, CO₂, fuel cost calculations
 │   │   └── routing.py         # Original route distance calc
 │   ├── services/              # External API wrappers
-│   │   └── geo_service.py     # Geocoding (Nominatim) + OSRM
+│   │   ├── geo_service.py     # Geocoding (Nominatim) + OSRM
+|   |   └── fuel_service.py    # Live Malaysia fuel prices (data.gov.my) ← NEW
 │   └── solver/                # Optimization algorithms
 │       └── genetic.py         # Genetic Algorithm TSP solver
 │

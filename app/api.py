@@ -8,9 +8,14 @@ from app.core.routing import calculate_original_route_distance
 from app.services.geo_service import get_coordinates, get_distance_matrix, get_route_shape
 from app.solver.genetic import GeneticOptimizer
 from config import GA_DEFAULTS
+from app.services.fuel_service import get_latest_fuel_prices
 
 api_bp = Blueprint("api", __name__)
 
+@api_bp.route("/api/fuel-prices", methods=["GET"])
+def fuel_prices():
+    data = get_latest_fuel_prices()
+    return jsonify(data)
 
 @api_bp.route("/api/process-route", methods=["POST"])
 @login_required

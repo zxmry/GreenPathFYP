@@ -259,6 +259,29 @@
                     </div>
                 </div>
 
+                <!-- Live Fuel Price Banner -->
+                <div id="fuel-price-banner" style="
+                    background: linear-gradient(135deg, #e8f5e9, #f1f8e9);
+                    border: 1px solid #a5d6a7;
+                    border-radius: 12px;
+                    padding: 10px 16px;
+                    margin-bottom: 14px;
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    font-size: 13px;
+                    color: #2e7d32;
+                ">
+                    <i class="fas fa-gas-pump"></i>
+                    <span>
+                        🇲🇾 Live Fuel Prices (data.gov.my) &nbsp;|&nbsp;
+                        RON95: <strong id="live-ron95">Loading...</strong> &nbsp;|&nbsp;
+                        RON97: <strong id="live-ron97">Loading...</strong> &nbsp;|&nbsp;
+                        Diesel: <strong id="live-diesel">Loading...</strong> &nbsp;|&nbsp;
+                        <span id="live-fuel-date" style="opacity: 0.7;"></span>
+                    </span>
+                </div>
+
                 <!-- Metrics Grid -->
                 <div class="metrics-grid">
                     <div class="metric-card">
@@ -392,6 +415,7 @@
 
 
     <!-- Initialize App -->
+    <!-- Initialize App -->
     <script>
         // Hide splash screen after load
         window.addEventListener('load', function() {
@@ -403,6 +427,22 @@
                     document.body.classList.add('loaded');
                 }, 500);
             }, 1000);
+
+            // ✅ Fetch live fuel prices after page fully loads
+            fetch('/api/fuel-prices')
+                .then(res => res.json())
+                .then(data => {
+                    document.getElementById('live-ron95').textContent = 'RM ' + data.ron95;
+                    document.getElementById('live-ron97').textContent = 'RM ' + data.ron97;
+                    document.getElementById('live-diesel').textContent = 'RM ' + data.diesel;
+                    if (data.date) {
+                        document.getElementById('live-fuel-date').textContent = 'as of ' + data.date;
+                    }
+                })
+                .catch(() => {
+                    document.getElementById('fuel-price-banner').innerHTML =
+                        '<i class="fas fa-exclamation-circle"></i> Unable to load live fuel prices.';
+                });
         });
     </script>
 </body>

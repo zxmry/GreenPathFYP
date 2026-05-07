@@ -732,7 +732,8 @@ function updateChartType(type) {
     if (!chartInstance) return;
     
     const ctx = document.getElementById('metricsChart').getContext('2d');
-    const comparison = chartInstance.data.datasets[0].data; // Use stored comparison data
+    const comparison = window.currentComparison; // ✅ Use the stored comparison object
+    if (!comparison) return;
     
     if (chartInstance) {
         chartInstance.destroy();
@@ -745,17 +746,17 @@ function updateChartType(type) {
     switch(type) {
         case 'distance':
             label = 'Distance (km)';
-            data = [comparison[0], comparison[1]]; // original, optimized
+            data = [comparison.original_distance_km, comparison.optimized_distance_km];
             yTitle = 'Distance';
             break;
         case 'co2':
             label = 'CO₂ Emissions (kg)';
-            data = [comparison[0] * 0.120, comparison[1] * 0.120];
+            data = [comparison.original_co2_kg, comparison.optimized_co2_kg];
             yTitle = 'CO₂ Emissions';
             break;
         case 'time':
             label = 'Travel Time (min)';
-            data = [(comparison[0] / 35) * 60, (comparison[1] / 35) * 60];
+            data = [comparison.original_travel_minutes, comparison.optimized_travel_minutes];
             yTitle = 'Travel Time';
             break;
         case 'fuel':
