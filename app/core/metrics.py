@@ -1,123 +1,151 @@
-"""Route metrics calculations: time, CO₂, and fuel cost."""
+"""Route metrics calculations: time, CO₂, and fuel cost.
 
-from config import ROUTE_PARAMS, VEHICLE_FUEL_PARAMS
+FYP2 change: all calculations are now vehicle-aware.
+Speed, CO₂ rate and stop time differ per vehicle type so results
+are accurate whether the user registered as a motorcyclist, car
+driver or van operator.
+"""
 
+from config import VEHICLE_PARAMS
 
-def calculate_time_metrics(original_distance_km, optimized_distance_km, num_stops):
+# ── Vehicle parameter lookup ──────────────────────────────────────────────────
+
+def _get_vehicle_params(vehicle_type):
     """
-    Calculate realistic time metrics for delivery routes.
-
-    Parameters:
-        original_distance_km: Original route distance in kilometers.
-        optimized_distance_km: Optimized route distance in kilometers.
-        num_stops: Number of delivery stops (excluding return to start).
-
-    Returns:
-        Dictionary with all time metrics.
+    Return the correct VEHICLE_PARAMS entry for the given vehicle string.
+    Falls back to 'car' if the type is unrecognised.
     """
-    params = ROUTE_PARAMS
+    v = vehicle_type.lower() if vehicle_type else ""
+    if any(w in v for w in ["motorcycle", "moto", "bike"]):
+        return VEHICLE_PARAMS["motorcycle"]
+    if any(w in v for w in ["van", "truck", "lorry"]):
+        return VEHICLE_PARAMS["van"]
+    return VEHICLE_PARAMS["car"]   # default
 
-    # Travel time (excluding stops)
-    original_travel_hours = original_distance_km / params["average_speed_kmh"]
-    optimized_travel_hours = optimized_distance_km / params["average_speed_kmh"]
 
-    # Apply traffic factor
-    original_travel_hours *= params["traffic_factor"]
-    optimized_travel_hours *= params["traffic_factor"]
+# ── Time & CO₂ metrics ────────────────────────────────────────────────────────
 
-    # Add stop time
-    total_stop_time_hours = (num_stops * params["stop_time_minutes"]) / 60
+def calculate_time_metrics(
+    original_distance_km,
+    optimized_distance_km,
+    num_stops,
+    vehicle_type="car",
+):
+    """
+    Calculate realistic time and CO₂ metrics for delivery routes.
 
-    # Total time including stops
-    original_total_hours = original_travel_hours + total_stop_time_hours
-    optimized_total_hours = optimized_travel_hours + total_stop_time_hours
+    Now vehicle-aware: speed, traffic factor, stop time and CO₂
+    rate all vary per vehicle type.
 
-    # Convert to minutes for display
-    original_total_minutes = original_total_hours * 60
-    optimized_total_minutes = optimized_total_hours * 60
+    Parameters
+    ----------
+    original_distance_km  : float
+    optimized_distance_km : float
+    num_stops             : int   — number of delivery stops (excl. return)
+    vehicle_type          : str   — from user profile ("motorcycle"/"car"/"van")
 
-    # Calculate savings
-    time_saved_minutes = original_total_minutes - optimized_total_minutes
+    Returns
+    -------
+    dict with all time, distance and CO₂ metrics.
+    """
+    params = _get_vehicle_params(vehicle_type)
 
-    # Percentages
-    distance_savings_km = original_distance_km - optimized_distance_km
-    distance_savings_percentage = (
-        (distance_savings_km / original_distance_km) * 100
+    speed_kmh      = params["average_speed_kmh"]
+    traffic_factor = params["traffic_factor"]
+    stop_time_min  = params["stop_time_minutes"]
+    co2_per_km     = params["co2_per_km"]
+
+    # Travel time (hours, road only)
+    orig_travel_h = (original_distance_km  / speed_kmh) * traffic_factor
+    opt_travel_h  = (optimized_distance_km / speed_kmh) * traffic_factor
+
+    # Stop time (same number of stops for both routes)
+    stop_time_h = (num_stops * stop_time_min) / 60
+
+    # Total time (hours → minutes)
+    orig_total_min = (orig_travel_h + stop_time_h) * 60
+    opt_total_min  = (opt_travel_h  + stop_time_h) * 60
+    time_saved_min = orig_total_min - opt_total_min
+
+    # Distance savings
+    dist_saved_km = original_distance_km - optimized_distance_km
+    dist_savings_pct = (
+        (dist_saved_km / original_distance_km) * 100
         if original_distance_km > 0 else 0
     )
-    time_savings_percentage = (
-        (time_saved_minutes / original_total_minutes) * 100
-        if original_total_minutes > 0 else 0
+    time_savings_pct = (
+        (time_saved_min / orig_total_min) * 100
+        if orig_total_min > 0 else 0
     )
 
-    # CO₂ calculations
-    original_co2_kg = original_distance_km * params["co2_per_km"]
-    optimized_co2_kg = optimized_distance_km * params["co2_per_km"]
-    co2_saved_kg = original_co2_kg - optimized_co2_kg
+    # CO₂ (vehicle-specific rate)
+    orig_co2_kg = original_distance_km  * co2_per_km
+    opt_co2_kg  = optimized_distance_km * co2_per_km
+    co2_saved_kg = orig_co2_kg - opt_co2_kg
 
     return {
-        "original_travel_minutes": round(original_total_minutes, 1),
-        "optimized_travel_minutes": round(optimized_total_minutes, 1),
-        "time_saved_minutes": round(time_saved_minutes, 1),
-        "distance_savings_km": round(distance_savings_km, 2),
-        "distance_savings_percentage": round(distance_savings_percentage, 1),
-        "time_savings_percentage": round(time_savings_percentage, 1),
-        "original_co2_kg": round(original_co2_kg, 2),
-        "optimized_co2_kg": round(optimized_co2_kg, 2),
-        "co2_saved_kg": round(co2_saved_kg, 2),
-        "num_stops": num_stops,
-        "average_speed_kmh": params["average_speed_kmh"],
-        "stop_time_minutes": params["stop_time_minutes"],
+        "original_travel_minutes":   round(orig_total_min, 1),
+        "optimized_travel_minutes":  round(opt_total_min, 1),
+        "time_saved_minutes":        round(time_saved_min, 1),
+        "distance_savings_km":       round(dist_saved_km, 2),
+        "distance_savings_percentage": round(dist_savings_pct, 1),
+        "time_savings_percentage":   round(time_savings_pct, 1),
+        "original_co2_kg":           round(orig_co2_kg, 2),
+        "optimized_co2_kg":          round(opt_co2_kg, 2),
+        "co2_saved_kg":              round(co2_saved_kg, 2),
+        "num_stops":                 num_stops,
+        # Expose params used so frontend can show them
+        "average_speed_kmh":         speed_kmh,
+        "stop_time_minutes":         stop_time_min,
+        "traffic_factor":            traffic_factor,
+        "co2_per_km":                co2_per_km,
+        "vehicle_type":              vehicle_type,
     }
 
 
-def calculate_fuel_cost_metrics(original_distance_km, optimized_distance_km, vehicle_type):
+# ── Fuel cost metrics ─────────────────────────────────────────────────────────
+
+def calculate_fuel_cost_metrics(
+    original_distance_km,
+    optimized_distance_km,
+    vehicle_type,
+):
     """
-    Calculate fuel cost metrics based on distance, vehicle type, fuel efficiency,
+    Calculate fuel cost metrics using vehicle-specific efficiency
     and live Malaysian fuel prices from data.gov.my.
     """
-    from app.services.fuel_service import get_latest_fuel_prices  # import here to avoid circular imports
+    from app.services.fuel_service import get_latest_fuel_prices
 
-    vehicle_lower = vehicle_type.lower()
+    params     = _get_vehicle_params(vehicle_type)
+    efficiency = params["efficiency_l_per_100km"]
+    fuel_type  = params["fuel_type"]
 
-    # Get live fuel prices
     live_prices = get_latest_fuel_prices()
-
-    if any(word in vehicle_lower for word in ["motorcycle", "moto", "bike"]):
-        fuel_efficiency_l_per_100km = VEHICLE_FUEL_PARAMS["motorcycle"]["efficiency_l_per_100km"]
-        fuel_price_rm_per_l = live_prices["ron95"]  # motorcycles use RON95
-    elif any(word in vehicle_lower for word in ["car", "sedan"]):
-        fuel_efficiency_l_per_100km = VEHICLE_FUEL_PARAMS["car"]["efficiency_l_per_100km"]
-        fuel_price_rm_per_l = live_prices["ron95"]  # cars use RON95
-    else:  # van, truck, lorry, default
-        fuel_efficiency_l_per_100km = VEHICLE_FUEL_PARAMS["van"]["efficiency_l_per_100km"]
-        fuel_price_rm_per_l = live_prices["diesel"]  # vans/trucks use diesel
+    price_per_l = live_prices.get(fuel_type, live_prices.get("ron95", 2.05))
 
     print(
         f"   🛢️  Fuel calc: {vehicle_type} → "
-        f"{fuel_efficiency_l_per_100km}L/100km @ RM{fuel_price_rm_per_l}/L (live price)"
+        f"{efficiency}L/100km @ RM{price_per_l}/L "
+        f"({fuel_type.upper()}, live price)"
     )
 
-    # Fuel used = (distance_km / 100) * efficiency
-    original_fuel_liters = (original_distance_km / 100) * fuel_efficiency_l_per_100km
-    optimized_fuel_liters = (optimized_distance_km / 100) * fuel_efficiency_l_per_100km
+    orig_liters = (original_distance_km  / 100) * efficiency
+    opt_liters  = (optimized_distance_km / 100) * efficiency
 
-    # Fuel cost = fuel_liters * price_per_liter
-    original_fuel_cost_rm = round(original_fuel_liters * fuel_price_rm_per_l, 2)
-    optimized_fuel_cost_rm = round(optimized_fuel_liters * fuel_price_rm_per_l, 2)
-
-    fuel_cost_saved_rm = round(original_fuel_cost_rm - optimized_fuel_cost_rm, 2)
-    fuel_cost_savings_percentage = (
-        round((fuel_cost_saved_rm / original_fuel_cost_rm) * 100, 1)
-        if original_fuel_cost_rm > 0 else 0
+    orig_cost_rm  = round(orig_liters * price_per_l, 2)
+    opt_cost_rm   = round(opt_liters  * price_per_l, 2)
+    saved_rm      = round(orig_cost_rm - opt_cost_rm, 2)
+    savings_pct   = (
+        round((saved_rm / orig_cost_rm) * 100, 1)
+        if orig_cost_rm > 0 else 0
     )
 
     return {
-        "original_fuel_cost_rm": original_fuel_cost_rm,
-        "optimized_fuel_cost_rm": optimized_fuel_cost_rm,
-        "fuel_cost_saved_rm": fuel_cost_saved_rm,
-        "fuel_cost_savings_percentage": fuel_cost_savings_percentage,
-        "fuel_efficiency_l_per_100km": fuel_efficiency_l_per_100km,
-        "fuel_price_rm_per_l": fuel_price_rm_per_l,
+        "original_fuel_cost_rm":        orig_cost_rm,
+        "optimized_fuel_cost_rm":       opt_cost_rm,
+        "fuel_cost_saved_rm":           saved_rm,
+        "fuel_cost_savings_percentage": savings_pct,
+        "fuel_efficiency_l_per_100km":  efficiency,
+        "fuel_price_rm_per_l":          price_per_l,
+        "fuel_type":                    fuel_type.upper(),
     }
-
