@@ -60,7 +60,7 @@ def login():
                 return render_template("login.html")
             USERS[phone] = {"name": name, "password": password, "vehicle": vehicle}
             save_users(USERS)
-            session["user"] = USERS[phone]
+            session["user"] = {"name": name, "phone": phone, "vehicle": vehicle}
             flash(f"Welcome {name}! Account created.", "success")
             return redirect(url_for("auth.dashboard"))
 
@@ -93,4 +93,3 @@ def logout():
     session.clear()
     flash("Logged out successfully.", "info")
     return redirect(url_for("auth.login"))
-

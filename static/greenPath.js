@@ -210,6 +210,13 @@ function renderAddressItem(item) {
                 <i class="fas fa-clock"></i>
                 <span>Pending optimization</span>
             </div>
+            <div class="time-window-row" style="display:flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap;">
+                <i class="fas fa-hourglass-half" style="color:#0056A4;font-size:11px;"></i>
+                <label style="font-size:11px;color:#777;margin:0;">Earliest:</label>
+                <input type="time" class="tw-earliest" style="font-size:11px;padding:2px 4px;border:1px solid #ccc;border-radius:4px;">
+                <label style="font-size:11px;color:#777;margin:0;">Latest:</label>
+                <input type="time" class="tw-latest" style="font-size:11px;padding:2px 4px;border:1px solid #ccc;border-radius:4px;">
+            </div>
         </div>
         <div class="stop-actions">
             <button class="action-btn remove-btn" title="Remove address">
@@ -316,7 +323,9 @@ async function optimizeRoute() {
                 'Accept': 'application/json'
             },
             body: JSON.stringify({
-                addresses: addressItems.map(item => item.text)
+                addresses: addressItems.map(item => item.text),
+                time_windows: collectTimeWindows(),
+                departure_time: document.getElementById('departure-time')?.value || '08:00'
             })
         });
         
@@ -357,10 +366,87 @@ function handleOptimizationSuccess(data) {
     headerDistanceEl.textContent = `${data.route_comparison.optimized_distance_km.toFixed(1)} km`;
     headerSavingsEl.textContent = `${data.route_comparison.co2_saved_kg.toFixed(1)} kg`;
     
+    // Show time window results if any
+    if (data.time_windows && data.time_windows.stop_schedule && data.time_windows.stop_schedule.length > 0) {
+        showTimeWindowResults(data.time_windows);
+    }
+
     // Show success notification
     const savingsPercent = data.route_comparison.distance_savings_percentage;
     showNotification('success', 'Route Optimized!', 
         `Saved ${savingsPercent}% distance and ${data.route_comparison.co2_saved_kg.toFixed(1)}kg CO₂`);
+}
+
+// ===== TIME WINDOW FUNCTIONS =====
+
+function collectTimeWindows() {
+    const windows = [];
+    document.querySelectorAll('.address-item').forEach(item => {
+        const address = item.querySelector('.stop-address')?.textContent?.trim();
+        const earliest = item.querySelector('.tw-earliest')?.value;
+        const latest = item.querySelector('.tw-latest')?.value;
+        if (address && (earliest || latest)) {
+            windows.push({ address, earliest: earliest || null, latest: latest || null });
+        }
+    });
+    return windows;
+}
+
+function showTimeWindowResults(twData) {
+    // Remove existing panel if any
+    const existing = document.getElementById('tw-results-panel');
+    if (existing) existing.remove();
+
+    const panel = document.createElement('div');
+    panel.id = 'tw-results-panel';
+    panel.style.cssText = `
+        background: white; border: 1px solid #e0e0e0; border-radius: 10px;
+        padding: 14px; margin-top: 12px; font-size: 13px;
+    `;
+
+    const title = twData.feasible
+        ? '<span style="color:#2E7D32;"><i class="fas fa-check-circle"></i> All time windows satisfied</span>'
+        : `<span style="color:#C62828;"><i class="fas fa-exclamation-triangle"></i> ${twData.violations.length} time window violation(s)</span>`;
+
+    const rows = twData.stop_schedule.map(s => {
+        const statusColor = s.status === 'violated' ? '#C62828' : s.status.startsWith('early') ? '#E65100' : '#2E7D32';
+        const statusLabel = s.status === 'violated' ? 'Late' : s.status.startsWith('early') ? 'Early (wait)' : 'On time';
+        const windowStr = s.window
+            ? `${s.window.earliest_min != null ? Math.floor(s.window.earliest_min/60).toString().padStart(2,'0')+':'+String(s.window.earliest_min%60).padStart(2,'0') : '--'} – ${s.window.latest_min != null ? Math.floor(s.window.latest_min/60).toString().padStart(2,'0')+':'+String(s.window.latest_min%60).padStart(2,'0') : '--'}`
+            : 'No window';
+        return `<tr>
+            <td style="padding:4px 8px;">${s.address.split(',')[0]}</td>
+            <td style="padding:4px 8px;text-align:center;">${s.estimated_arrival}</td>
+            <td style="padding:4px 8px;text-align:center;color:#555;">${windowStr}</td>
+            <td style="padding:4px 8px;text-align:center;color:${statusColor};font-weight:600;">${statusLabel}</td>
+        </tr>`;
+    }).join('');
+
+    panel.innerHTML = `
+        <div style="font-weight:700;margin-bottom:10px;">${title}</div>
+        <table style="width:100%;border-collapse:collapse;">
+            <thead>
+                <tr style="background:#f5f5f5;font-weight:600;font-size:12px;">
+                    <th style="padding:4px 8px;text-align:left;">Stop</th>
+                    <th style="padding:4px 8px;">Est. Arrival</th>
+                    <th style="padding:4px 8px;">Window</th>
+                    <th style="padding:4px 8px;">Status</th>
+                </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+        </table>
+    `;
+
+    // Insert below the optimized sequence section
+    const stepsEl = document.getElementById('route-steps');
+    if (stepsEl && stepsEl.parentElement) {
+        stepsEl.parentElement.appendChild(panel);
+    }
+
+    if (!twData.feasible) {
+        showNotification('warning', 'Time Window Issue',
+            `${twData.violations.length} stop(s) may not be reachable within their time window`);
+    }
 }
 
 function updateMetrics(comparison) {

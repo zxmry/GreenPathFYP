@@ -1,0 +1,30 @@
+{
+  "addresses": [
+    "KLCC, Kuala Lumpur",
+    "Subang Jaya, Selangor",
+    "Shah Alam, Selangor",
+    "Chow Kit, Kuala Lumpur",
+    "Bangsar, Kuala Lumpur"
+  ],
+  "vehicle": "car",
+  "random_baseline": {
+    "avg_dist_km": 89.66187999999998,
+    "avg_time_min": 204.4968,
+    "avg_co2_kg": 18.828986
+  },
+  "ga_baseline": {
+    "dist_km": 68.3195,
+    "route": [
+      3,
+      2,
+      1,
+      4,
+      0
+    ]
+  },
+  "dqn_result": {
+    "avg_dist_km": 95.93100000000001,
+    "avg_time_min": 236.26399999999998,
+    "avg_co2_kg": 20.14549999999999
+  }
+}
