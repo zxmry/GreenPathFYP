@@ -1,139 +1,170 @@
 """
-Route History Service for GreenPath (FYP2).
+Route History Service — SQLite version.
 
-Persists completed route optimisations to routes.json so users can
-review past deliveries, track cumulative CO₂ savings and see fuel
-cost trends over time.
-
-Storage format (routes.json)
------------------------------
-{
-  "<phone_number>": [
-    {
-      "id":               "uuid4 string",
-      "timestamp":        "2025-06-01T14:32:00",
-      "addresses":        ["addr1", "addr2", ...],
-      "optimized_route":  ["addr1", "addr3", "addr2", ...],
-      "vehicle_type":     "car",
-      "metrics": {
-        "original_distance_km":   44.4,
-        "optimized_distance_km":  40.2,
-        "distance_saved_km":      4.2,
-        "time_saved_minutes":     8.6,
-        "co2_saved_kg":           0.51,
-        "fuel_cost_saved_rm":     1.20,
-        "original_travel_minutes": 121.3,
-        "optimized_travel_minutes": 112.7
-      },
-      "time_windows": [          # optional — only present if user set them
-        {"address": "addr2", "earliest": "09:00", "latest": "11:00"},
-        {"address": "addr3", "earliest": "14:00", "latest": "16:00"}
-      ]
-    },
-    ...
-  ]
-}
+Public API is IDENTICAL to the original JSON version so api.py
+needs zero changes.  Every function accepts the same parameters
+and returns the same data shapes.
 """
 
-import json
-import os
 import uuid
 from datetime import datetime
-
-from config import ROUTES_FILE
-
-
-# ── Internal helpers ──────────────────────────────────────────────────────────
-
-def _load():
-    if os.path.exists(ROUTES_FILE):
-        with open(ROUTES_FILE, "r") as f:
-            return json.load(f)
-    return {}
-
-
-def _save(data):
-    with open(ROUTES_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+from app.database import get_connection
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def save_route(phone, addresses, optimized_route, vehicle_type, metrics, time_windows=None):
     """
-    Persist a completed route optimisation for the given user.
+    Persist a completed route optimisation.
 
-    Parameters
-    ----------
-    phone          : str   — user's phone number (primary key in users.json)
-    addresses      : list  — original address list as submitted by user
-    optimized_route: list  — addresses in optimised delivery order
-    vehicle_type   : str
-    metrics        : dict  — from calculate_time_metrics / calculate_fuel_cost_metrics
-    time_windows   : list  — [{address, earliest, latest}, ...] or None
+    Inserts one row into routes, N rows into route_addresses
+    (original + optimised sequences) and optionally into time_windows.
 
-    Returns
-    -------
-    str — the new route id
+    Returns the new route id (8-char string).
     """
-    data = _load()
-    if phone not in data:
-        data[phone] = []
+    route_id  = str(uuid.uuid4())[:8]
+    timestamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
 
-    route_id = str(uuid.uuid4())[:8]   # short 8-char id for display
+    conn = get_connection()
+    with conn:
+        # 1. Insert main route record
+        conn.execute("""
+            INSERT INTO routes (
+                id, phone, timestamp, vehicle_type,
+                orig_dist_km, opt_dist_km, dist_saved_km,
+                time_saved_min, co2_saved_kg, fuel_saved_rm,
+                orig_time_min, opt_time_min
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+        """, (
+            route_id, phone, timestamp, vehicle_type,
+            metrics.get("original_distance_km",    0),
+            metrics.get("optimized_distance_km",   0),
+            metrics.get("distance_savings_km",     0),
+            metrics.get("time_saved_minutes",      0),
+            metrics.get("co2_saved_kg",            0),
+            metrics.get("fuel_cost_saved_rm",      0),
+            metrics.get("original_travel_minutes", 0),
+            metrics.get("optimized_travel_minutes",0),
+        ))
 
-    record = {
-        "id":              route_id,
-        "timestamp":       datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-        "addresses":       addresses,
-        "optimized_route": optimized_route,
-        "vehicle_type":    vehicle_type,
-        "metrics": {
-            "original_distance_km":    metrics.get("original_distance_km",    0),
-            "optimized_distance_km":   metrics.get("optimized_distance_km",   0),
-            "distance_saved_km":       metrics.get("distance_savings_km",     0),
-            "time_saved_minutes":      metrics.get("time_saved_minutes",      0),
-            "co2_saved_kg":            metrics.get("co2_saved_kg",            0),
-            "fuel_cost_saved_rm":      metrics.get("fuel_cost_saved_rm",      0),
-            "original_travel_minutes": metrics.get("original_travel_minutes", 0),
-            "optimized_travel_minutes":metrics.get("optimized_travel_minutes",0),
-        },
-    }
+        # 2. Original address sequence (is_optimised = 0)
+        conn.executemany("""
+            INSERT INTO route_addresses (route_id, address, position, is_optimised)
+            VALUES (?,?,?,0)
+        """, [(route_id, addr, i) for i, addr in enumerate(addresses)])
 
-    if time_windows:
-        record["time_windows"] = time_windows
+        # 3. Optimised address sequence (is_optimised = 1)
+        conn.executemany("""
+            INSERT INTO route_addresses (route_id, address, position, is_optimised)
+            VALUES (?,?,?,1)
+        """, [(route_id, addr, i) for i, addr in enumerate(optimized_route)])
 
-    # Keep max 50 routes per user (newest first)
-    data[phone].insert(0, record)
-    data[phone] = data[phone][:50]
+        # 4. Time windows (optional)
+        if time_windows:
+            conn.executemany("""
+                INSERT INTO time_windows (route_id, address, earliest, latest)
+                VALUES (?,?,?,?)
+            """, [
+                (route_id, tw.get("address",""), tw.get("earliest"), tw.get("latest"))
+                for tw in time_windows
+            ])
 
-    _save(data)
+    conn.close()
+    print(f"   ✅ Route {route_id} saved to SQLite for user {phone}")
     return route_id
 
 
 def get_user_routes(phone, limit=20):
     """
-    Return the most recent `limit` routes for the given user.
-
-    Returns
-    -------
-    list of route dicts (newest first), empty list if none.
+    Return the most recent `limit` route records for the user.
+    Returns a list of dicts matching the original JSON shape.
     """
-    data = _load()
-    return data.get(phone, [])[:limit]
+    conn = get_connection()
+
+    # Fetch route rows newest-first
+    rows = conn.execute("""
+        SELECT * FROM routes
+        WHERE phone = ?
+        ORDER BY timestamp DESC
+        LIMIT ?
+    """, (phone, limit)).fetchall()
+
+    result = []
+    for row in rows:
+        rid = row["id"]
+
+        # Original addresses in order
+        orig_addrs = [
+            r["address"] for r in conn.execute("""
+                SELECT address FROM route_addresses
+                WHERE route_id = ? AND is_optimised = 0
+                ORDER BY position
+            """, (rid,)).fetchall()
+        ]
+
+        # Optimised addresses in order
+        opt_addrs = [
+            r["address"] for r in conn.execute("""
+                SELECT address FROM route_addresses
+                WHERE route_id = ? AND is_optimised = 1
+                ORDER BY position
+            """, (rid,)).fetchall()
+        ]
+
+        # Time windows for this route
+        tws = [
+            {"address": r["address"], "earliest": r["earliest"], "latest": r["latest"]}
+            for r in conn.execute("""
+                SELECT address, earliest, latest FROM time_windows
+                WHERE route_id = ?
+            """, (rid,)).fetchall()
+        ]
+
+        record = {
+            "id":              rid,
+            "timestamp":       row["timestamp"],
+            "addresses":       orig_addrs,
+            "optimized_route": opt_addrs,
+            "vehicle_type":    row["vehicle_type"],
+            "metrics": {
+                "original_distance_km":    row["orig_dist_km"],
+                "optimized_distance_km":   row["opt_dist_km"],
+                "distance_saved_km":       row["dist_saved_km"],
+                "time_saved_minutes":      row["time_saved_min"],
+                "co2_saved_kg":            row["co2_saved_kg"],
+                "fuel_cost_saved_rm":      row["fuel_saved_rm"],
+                "original_travel_minutes": row["orig_time_min"],
+                "optimized_travel_minutes":row["opt_time_min"],
+            },
+        }
+        if tws:
+            record["time_windows"] = tws
+
+        result.append(record)
+
+    conn.close()
+    return result
 
 
 def get_cumulative_stats(phone):
     """
-    Compute cumulative sustainability stats across all saved routes.
-
-    Returns
-    -------
-    dict with total_routes, total_co2_saved_kg, total_fuel_saved_rm,
-              total_distance_saved_km, total_time_saved_min
+    Compute cumulative sustainability stats using a single SQL aggregate query.
+    Much more efficient than loading all records into Python and summing in a loop.
     """
-    routes = get_user_routes(phone, limit=50)
-    if not routes:
+    conn = get_connection()
+    row = conn.execute("""
+        SELECT
+            COUNT(*)              AS total_routes,
+            ROUND(SUM(co2_saved_kg),      2) AS total_co2_saved_kg,
+            ROUND(SUM(fuel_saved_rm),     2) AS total_fuel_saved_rm,
+            ROUND(SUM(dist_saved_km),     2) AS total_distance_saved_km,
+            ROUND(SUM(time_saved_min),    1) AS total_time_saved_min
+        FROM routes
+        WHERE phone = ?
+    """, (phone,)).fetchone()
+    conn.close()
+
+    if not row or row["total_routes"] == 0:
         return {
             "total_routes": 0,
             "total_co2_saved_kg": 0,
@@ -143,19 +174,24 @@ def get_cumulative_stats(phone):
         }
 
     return {
-        "total_routes":            len(routes),
-        "total_co2_saved_kg":      round(sum(r["metrics"]["co2_saved_kg"]       for r in routes), 2),
-        "total_fuel_saved_rm":     round(sum(r["metrics"]["fuel_cost_saved_rm"] for r in routes), 2),
-        "total_distance_saved_km": round(sum(r["metrics"]["distance_saved_km"]  for r in routes), 2),
-        "total_time_saved_min":    round(sum(r["metrics"]["time_saved_minutes"] for r in routes), 1),
+        "total_routes":            row["total_routes"],
+        "total_co2_saved_kg":      row["total_co2_saved_kg"]      or 0,
+        "total_fuel_saved_rm":     row["total_fuel_saved_rm"]      or 0,
+        "total_distance_saved_km": row["total_distance_saved_km"] or 0,
+        "total_time_saved_min":    row["total_time_saved_min"]     or 0,
     }
 
 
 def delete_route(phone, route_id):
-    """Delete a specific route record for the user."""
-    data = _load()
-    if phone in data:
-        data[phone] = [r for r in data[phone] if r["id"] != route_id]
-        _save(data)
-        return True
-    return False
+    """
+    Delete a specific route for the user.
+    CASCADE in the schema automatically removes linked route_addresses
+    and time_windows rows.
+    """
+    conn = get_connection()
+    with conn:
+        conn.execute("""
+            DELETE FROM routes WHERE id = ? AND phone = ?
+        """, (route_id, phone))
+    conn.close()
+    return True

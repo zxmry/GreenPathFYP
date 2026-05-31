@@ -81,3 +81,6 @@ GEO_TIMEOUT    = 10
 # ── OSRM ─────────────────────────────────────────────────────────────────────
 OSRM_BASE_URL = "http://router.project-osrm.org"
 OSRM_TIMEOUT  = 30
+
+# ── SQLite Database ───────────────────────────────────────────────────────────
+DB_PATH = os.path.join(os.path.dirname(__file__), "greenpath.db")

@@ -1,29 +1,17 @@
-"""Authentication blueprint: login, signup, logout."""
+"""Authentication blueprint — SQLite version.
+
+Replaces users.json read/write with direct SQL queries.
+All routes, flash messages and session behaviour are identical
+to the original so the frontend needs no changes at all.
+"""
 
 from flask import (
     Blueprint, render_template, request, redirect, url_for, session, flash,
 )
-import json
-import os
-
-from config import USERS_FILE
+from datetime import datetime
+from app.database import get_connection
 
 auth_bp = Blueprint("auth", __name__)
-
-
-def load_users():
-    if os.path.exists(USERS_FILE):
-        with open(USERS_FILE, "r") as f:
-            return json.load(f)
-    return {}
-
-
-def save_users(users):
-    with open(USERS_FILE, "w") as f:
-        json.dump(users, f, indent=2)
-
-
-USERS = load_users()
 
 
 def login_required(f):
@@ -45,31 +33,52 @@ def home():
 @auth_bp.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        action = request.form.get("action")
-        phone = request.form.get("phone", "").strip()
+        action   = request.form.get("action")
+        phone    = request.form.get("phone", "").strip()
         password = request.form.get("password", "")
 
         if action == "signup":
-            name = request.form.get("name", "").strip()
+            name    = request.form.get("name", "").strip()
             vehicle = request.form.get("vehicle", "")
+
             if len(name) < 2 or not vehicle or len(password) < 8:
-                flash(
-                    "Please fill all fields correctly. Password min 8 chars.",
-                    "error",
-                )
+                flash("Please fill all fields correctly. Password min 8 chars.", "error")
                 return render_template("login.html")
-            USERS[phone] = {"name": name, "password": password, "vehicle": vehicle}
-            save_users(USERS)
+
+            conn = get_connection()
+            # Check if phone already registered
+            existing = conn.execute(
+                "SELECT phone FROM users WHERE phone = ?", (phone,)
+            ).fetchone()
+
+            if existing:
+                conn.close()
+                flash("Phone number already registered. Please log in.", "error")
+                return render_template("login.html")
+
+            with conn:
+                conn.execute("""
+                    INSERT INTO users (phone, name, password, vehicle, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (phone, name, password, vehicle,
+                      datetime.now().strftime("%Y-%m-%dT%H:%M:%S")))
+            conn.close()
+
             session["user"] = {"name": name, "phone": phone, "vehicle": vehicle}
             flash(f"Welcome {name}! Account created.", "success")
             return redirect(url_for("auth.dashboard"))
 
         elif action == "login":
-            user = USERS.get(phone)
+            conn = get_connection()
+            user = conn.execute(
+                "SELECT * FROM users WHERE phone = ?", (phone,)
+            ).fetchone()
+            conn.close()
+
             if user and user["password"] == password:
                 session["user"] = {
-                    "name": user["name"],
-                    "phone": phone,
+                    "name":    user["name"],
+                    "phone":   user["phone"],
                     "vehicle": user["vehicle"],
                 }
                 flash(f'Welcome back, {user["name"]}!', "success")
