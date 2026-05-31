@@ -1,8 +1,6 @@
 # 🌿 GreenPath — AI-Optimised Sustainable Last-Mile Delivery
 
-A Flask-based web application for optimising last-mile delivery routes using a **Genetic Algorithm** (TSP solver). Built as a Final Year Project at the International Islamic University Malaysia (IIUM) for small and medium enterprise (SME) couriers and independent delivery operators in the Klang Valley region.
-
-FYP2 extends the FYP1 baseline with five major system enhancements and an empirical Reinforcement Learning research investigation.
+A Flask-based web application for optimising last-mile delivery routes using a **Genetic Algorithm** (TSP solver). Built as a Final Year Project at the International Islamic University Malaysia (IIUM) for SME couriers and independent delivery operators in the Klang Valley region.
 
 ---
 
@@ -12,23 +10,23 @@ FYP2 extends the FYP1 baseline with five major system enhancements and an empiri
 GreenPathFYP/
 ├── README.md                        # This file
 ├── requirements.txt                 # Python dependencies
-├── config.py                        # Centralised configuration (VEHICLE_PARAMS, GA_DEFAULTS)
+├── config.py                        # Centralised configuration
 ├── run.py                           # Flask entry point
-├── users.json                       # User accounts (auto-created on first signup)
-├── routes.json                      # Route history store (auto-created on first optimisation)
+├── migrate_to_sqlite.py             # One-time JSON → SQLite migration script
+├── greenpath.db                     # SQLite database (auto-created on first run)
 │
 ├── app/                             # Flask web application
-│   ├── __init__.py                  # App factory
-│   ├── auth.py                      # Login / signup / logout
+│   ├── __init__.py                  # App factory — calls init_db() on startup
+│   ├── auth.py                      # Login / signup / logout (SQLite-backed)
 │   ├── api.py                       # All API endpoints
+│   ├── database.py                  # SQLite connection helper + schema (init_db)
 │   │
 │   ├── core/                        # Business logic
 │   │   ├── metrics.py               # Vehicle-aware time, CO₂ and fuel cost calculations
 │   │   ├── routing.py               # Original route distance calculation
 │   │   └── time_windows.py          # Stop time window validation and feasibility check
 │   │
-│   ├── graph/                       # Road network graph module (FYP2)
-│   │   ├── __init__.py
+│   ├── graph/                       # Road network graph module
 │   │   └── road_graph.py            # NetworkX graph construction and PNG visualisation
 │   │
 │   ├── services/                    # External API wrappers
@@ -40,12 +38,11 @@ GreenPathFYP/
 │       └── genetic.py               # Genetic Algorithm TSP solver
 │
 ├── rl/                              # Reinforcement Learning research package
-│   ├── delivery_env.py              # Original synthetic grid environment (FYP1, kept for reference)
-│   ├── real_delivery_env.py         # Real OSRM-based environment (FYP2)
+│   ├── delivery_env.py              # Synthetic grid environment (kept for reference)
+│   ├── real_delivery_env.py         # Real OSRM-based Gymnasium environment
 │   └── train_real_dqn.py            # DQN training, evaluation and GA comparison
 │
 ├── models/                          # Saved RL models and results
-│   ├── dqn_real_final.zip           # Trained DQN model
 │   ├── env_config_real.json         # Serialised environment config
 │   └── results_real.json            # Three-algorithm comparison results
 │
@@ -53,18 +50,16 @@ GreenPathFYP/
 │   ├── greenPath.css
 │   └── greenPath.js
 │
-├── templates/                       # HTML templates
-│   ├── index.html                   # Main dashboard
-│   └── login.html                   # Login / signup page
-│
-└── logs/                            # RL training logs
+└── templates/                       # HTML templates
+    ├── index.html                   # Main dashboard
+    └── login.html                   # Login / signup page
 ```
 
 ---
 
 ## 🚀 Quick Start
 
-### 1. Install Dependencies
+### 1. Install dependencies
 
 ```bash
 pip install -r requirements.txt
@@ -76,42 +71,91 @@ RL training requires additional packages:
 pip install stable-baselines3 gymnasium matplotlib networkx
 ```
 
-### 2. Run the Flask App
+### 2. Run the app
 
 ```bash
 python run.py
 ```
 
-Open [http://localhost:5000](http://localhost:5000) in your browser. Register an account, select your vehicle type and start optimising routes.
+Open [http://localhost:5000](http://localhost:5000) in your browser.
+
+The SQLite database (`greenpath.db`) is created automatically on first run — no setup needed.
+
+---
+
+## 🗄️ Database
+
+GreenPath uses **SQLite** for persistent storage. The database is managed entirely by `app/database.py` and is initialised automatically when the app starts.
+
+### Schema
+
+| Table | Purpose |
+|-------|---------|
+| `users` | Registered delivery operators (phone, name, password, vehicle) |
+| `routes` | One row per completed optimisation run with all metrics |
+| `route_addresses` | Original and optimised stop sequences (linked to routes) |
+| `time_windows` | Per-stop arrival constraints (linked to routes) |
+
+### Querying the database directly
+
+```bash
+# Open SQLite shell from the project root
+sqlite3 greenpath.db
+
+# See all tables
+.tables
+
+# See all users
+SELECT * FROM users;
+
+# See all routes with user names
+SELECT r.id, u.name, r.vehicle_type, r.timestamp,
+       r.dist_saved_km, r.co2_saved_kg, r.fuel_saved_rm
+FROM routes r
+JOIN users u ON r.phone = u.phone
+ORDER BY r.timestamp DESC;
+
+# Cumulative savings per user
+SELECT u.name,
+       COUNT(r.id)               AS total_routes,
+       ROUND(SUM(r.co2_saved_kg),  2) AS total_co2_kg,
+       ROUND(SUM(r.fuel_saved_rm),  2) AS total_fuel_rm
+FROM users u
+LEFT JOIN routes r ON u.phone = r.phone
+GROUP BY u.phone;
+
+# Exit
+.quit
+```
+
+For a visual interface, use [DB Browser for SQLite](https://sqlitebrowser.org) (free).
+
+### Migrating from legacy JSON stores
+
+If you have existing `users.json` or `routes.json` data from a previous version:
+
+```bash
+python migrate_to_sqlite.py
+```
+
+This is a one-time operation. After verifying the data in `greenpath.db`, the JSON files can be deleted.
 
 ---
 
 ## 🧬 How the System Works
 
-### Main Optimisation Pipeline (`/api/process-route`)
+### Main optimisation pipeline (`POST /api/process-route`)
 
-1. **Geocoding** — User-entered addresses are converted to coordinates via Nominatim (OpenStreetMap).
-2. **Distance Matrix** — Real road distances between all stops are fetched from OSRM.
-3. **Original Route** — The unoptimised distance (user's input order) is calculated as a baseline.
-4. **Genetic Algorithm** — The stop sequence is optimised to minimise total travel distance using a custom GA with ordered crossover, swap mutation and elitism.
-5. **Vehicle-Aware Metrics** — Time, CO₂ emissions and fuel cost are calculated using parameters specific to the user's registered vehicle type (motorcycle, car or van).
-6. **Live Fuel Prices** — Fuel cost calculations use the current week's RON95/RON97/Diesel prices fetched from data.gov.my.
-7. **Road Network Graph** — The delivery stops are modelled as a weighted directed graph and rendered as a PNG visualisation embedded in the response.
-8. **Time Window Check** — If the user set earliest/latest arrival times per stop, the system simulates the route and reports feasibility.
-9. **Route History** — The completed optimisation is saved to `routes.json` under the user's account for cumulative tracking.
-10. **Visualisation** — Original and optimised routes are rendered on an interactive Leaflet.js map with metrics displayed on the dashboard.
-
----
-
-## 🆕 FYP2 Enhancements
-
-| Feature | Description |
-|---------|-------------|
-| **Vehicle-aware metrics** | Speed, traffic factor, stop time, CO₂ rate and fuel efficiency now differ per vehicle. Motorcycle: 45 km/h, 0.06 kg CO₂/km. Car: 35 km/h, 0.21 kg CO₂/km. Van: 28 km/h, 0.35 kg CO₂/km. |
-| **Live fuel prices** | Weekly RON95, RON97 and Diesel prices from data.gov.my API. Van users billed at Diesel rate; motorcycle and car at RON95. Falls back to defaults if API is unavailable. |
-| **Road network graph** | Delivery stops modelled as a weighted directed graph using NetworkX. Graph stats (density, connectivity, edge weights) and a PNG visualisation returned with every optimisation. Serves as the GNN input layer for future work. |
-| **Stop time windows** | Users set optional earliest/latest arrival times per stop. System simulates the route from departure time and reports on-time, early-wait or violated status per stop. |
-| **Route history** | Every completed optimisation saved to `routes.json` per user. `GET /api/route-history` returns full history and cumulative CO₂ / fuel cost savings. |
+1. **Geocoding** — Addresses converted to coordinates via Nominatim (OpenStreetMap).
+2. **Distance matrix** — Real road distances fetched from OSRM for all stop pairs.
+3. **Baseline route** — Unoptimised distance calculated in the user's input order.
+4. **Genetic Algorithm** — Stop sequence optimised using ordered crossover (OX1), swap mutation and elitism over 50 generations with a population of 100.
+5. **Vehicle-aware metrics** — Time, CO₂ and fuel cost calculated using parameters for the user's registered vehicle type.
+6. **Live fuel prices** — Fuel costs use the current week's RON95/RON97/Diesel prices from data.gov.my.
+7. **Road network graph** — Delivery stops modelled as a weighted directed graph using NetworkX and returned as a PNG visualisation.
+8. **Time window check** — If per-stop arrival windows are set, the system simulates the route and reports on-time, early or violated status per stop.
+9. **Route history** — The completed optimisation is saved to `greenpath.db` under the user's account for cumulative tracking.
+10. **Visualisation** — Original and optimised routes rendered on an interactive Leaflet.js map.
 
 ---
 
@@ -130,12 +174,11 @@ Open [http://localhost:5000](http://localhost:5000) in your browser. Register an
 
 ## 🤖 Reinforcement Learning Research
 
-FYP2 includes an empirical investigation into DQN-based route optimisation. The RL component is a **research contribution**, not the production optimiser (the GA handles production routing).
+The RL component is an **empirical research investigation**, not the production optimiser. The GA handles all production routing.
 
-### What was built
+### Environment
 
-- `RealDeliveryEnv` — a Gymnasium environment built from a real OSRM distance matrix replacing the synthetic grid from FYP1. State space includes current position, visited flags, distances to all stops and a time-of-day traffic multiplier.
-- `train_real_dqn.py` — trains a DQN agent and compares it against a random baseline and the GA on the same problem instance.
+`RealDeliveryEnv` is a Gymnasium-compatible environment built from a real OSRM distance matrix. State space includes current position, visited stop flags, distances to all unvisited stops and a simulated time-of-day traffic multiplier.
 
 ### Run RL training
 
@@ -158,11 +201,17 @@ Evaluate a saved model without retraining:
 python -m rl.train_real_dqn --eval-only
 ```
 
-Outputs saved to `models/` and `logs/`. Training curve saved to `training_curve_real.png`.
+Results saved to `models/` and `logs/`. Training curve saved to `training_curve_real.png`.
 
 ### Key finding
 
-The DQN agent (95.93 km average) underperformed both the random agent (89.66 km) and the GA (68.32 km) on route distance despite showing clear reward improvement during training. This is expected: DQN is designed for dynamic uncertain environments, not static small-scale TSP. The GA outperforms DQN on this class of problem because evolutionary search is purpose-built for combinatorial optimisation over a fixed distance matrix. See the FYP2 report Chapter 6 for the full analysis.
+| Agent | Avg. distance |
+|-------|--------------|
+| Genetic Algorithm | 68.32 km |
+| Random baseline | 89.66 km |
+| DQN agent | 95.93 km |
+
+The DQN underperformed the random agent on route distance despite clear reward improvement during training. This is expected: DQN is designed for dynamic uncertain environments, not static small-scale TSP. The GA outperforms DQN because evolutionary search is purpose-built for combinatorial optimisation over a fixed distance matrix.
 
 ---
 
@@ -196,10 +245,10 @@ The DQN agent (95.93 km average) underperformed both the random agent (89.66 km)
 | Setting | Description |
 |---------|-------------|
 | `SECRET_KEY` | Flask session secret — change before deploying |
+| `DB_PATH` | Path to SQLite database file (default: `greenpath.db` in project root) |
 | `VEHICLE_PARAMS` | All vehicle-specific parameters in one table |
 | `GA_DEFAULTS` | Population size, generations, mutation rate, elite size |
 | `OSRM_BASE_URL` | OSRM server URL (defaults to public demo server) |
-| `ROUTES_FILE` | Path to route history JSON store |
 
 ---
 
@@ -208,6 +257,7 @@ The DQN agent (95.93 km average) underperformed both the random agent (89.66 km)
 | Layer | Technology |
 |-------|------------|
 | Backend | Flask (Python 3) |
+| Database | SQLite (via Python `sqlite3` — no extra dependencies) |
 | Frontend | HTML5, CSS3, Vanilla JavaScript |
 | Maps | Leaflet.js + OpenStreetMap tiles |
 | Charts | Chart.js |
@@ -224,8 +274,8 @@ The DQN agent (95.93 km average) underperformed both the random agent (89.66 km)
 
 | Name | Student ID | Role |
 |------|-----------|------|
-| Muhammad Zamri bin Suhaimi | 2213125 | Frontend, Chapter 1, Conceptual Review, GA research |
-| Nabil Amri bin Mohd Redzuan | 2212011 | Backend, Flask, OSRM, Genetic Algorithm, RL |
+| Muhammad Zamri bin Suhaimi | 2213125 | Frontend, GA, documentation |
+| Nabil Amri bin Mohd Redzuan | 2212011 | Backend, Flask, OSRM, Genetic Algorithm, RL Research |
 
 **Supervisor:** Asst. Prof. Dr. Raini binti Hassan
 **Institution:** Kulliyyah of Information and Communication Technology, IIUM

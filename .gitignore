@@ -31,7 +31,6 @@ models/*.h5
 
 # Sensitive data
 cookies.txt
-users.json
 
 # IDE
 .vscode/
@@ -39,3 +38,7 @@ users.json
 *.swp
 *.swo
 
+#DB
+*.db
+*.db-shm
+*.db-wal

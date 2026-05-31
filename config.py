@@ -9,8 +9,6 @@ SECRET_KEY = os.environ.get(
 )
 
 # ── File Paths ───────────────────────────────────────────────────────────────
-USERS_FILE    = "users.json"
-ROUTES_FILE   = "routes.json"      # FYP2: route history storage
 MODELS_DIR    = "models"
 LOGS_DIR      = "logs"
 

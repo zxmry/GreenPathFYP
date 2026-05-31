@@ -1,4 +1,4 @@
-"""API blueprint: route optimization endpoint (FYP2 — updated)."""
+"""API blueprint: route optimization endpoint."""
 
 from flask import Blueprint, jsonify, request, session
 
